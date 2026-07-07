@@ -1,5 +1,5 @@
 # Назва конфігурації автоматичної збірки ядра Archi з вбудованим JRE
-name: Build Archi Core (Embedded JRE & Split Archives)
+name: Build Archi
 
 # Тригери автоматичного та ручного запуску
 on:
@@ -52,7 +52,8 @@ jobs:
           mv jre_temp/mac/jdk* jre_temp/mac/jre
           
           echo "=== Інтеграція JRE та пакування для Windows ==="
-          WIN_DIR=$(find $PRODUCTS_DIR -type d -path "*/windows/*" -name "Archi" | head -n 1)
+          # ВИПРАВЛЕНО: Змінено "*/windows/*" на "*/win32/*", відповідно до стандартів Eclipse RCP
+          WIN_DIR=$(find $PRODUCTS_DIR -type d -path "*/win32/*" -name "Archi" | head -n 1)
           if [ ! -z "$WIN_DIR" ]; then
             cp -r jre_temp/win/jre "$WIN_DIR/jre"
             cd "$WIN_DIR/.."
