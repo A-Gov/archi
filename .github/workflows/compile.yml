@@ -1,5 +1,5 @@
 # Назва конфігурації автоматичної збірки ядра Archi
-name: Build Archi
+name: Build Archi Core (Product Profile)
 
 # Тригери запуску конфігурації
 on:
@@ -25,12 +25,13 @@ jobs:
           cache: maven
 
       # Крок 3: Компіляція та пакування з пропуском тестів
-      # Фаза verify гарантує, що Tycho створить фінальні інсталятори застосунку
+      # ДОДАНО ФІКС: Активація профілю "-P product", який дає команду Tycho
+      # зібрати фінальні виконувані файли (.exe, .app) у цільову папку
       - name: Build Archi with Maven
-        run: mvn clean verify -B -e -DskipTests=true
+        run: mvn clean package -P product -B -e -DskipTests=true
 
       # Крок 4: Завантажуємо готові бінарники (Windows, Linux, macOS)
-      # Оскільки фаза verify пройдена успішно, файли гарантовано будуть у цій папці
+      # Завдяки профілю 'product' файли гарантовано будуть у цій папці
       - name: Upload Archi Binaries
         uses: actions/upload-artifact@v5
         if: always()
