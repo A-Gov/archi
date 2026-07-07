@@ -1,0 +1,42 @@
+# Назва конфігурації автоматичної збірки ядра Archi
+name: Build Archi Core
+
+# Визначаємо тригери запуску
+on:
+  push:
+    branches: [ "master", "main" ] # Автоматичний запуск при оновленні головної гілки
+  workflow_dispatch: # Дозволяє запускати збірку вручну через GitHub
+
+# Опис робочих кроків
+jobs:
+  build:
+    runs-on: ubuntu-latest # Використовуємо Linux-середовище для максимальної швидкодії
+
+    steps:
+      # Крок 1: Клонуємо ваш форк головного репозиторію Archi
+      - name: Checkout Repository
+        uses: actions/checkout@v5
+
+      # Крок 2: Встановлюємо Java 21 (жорстка вимога актуального рушія Archi/Eclipse RCP)
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      # Крок 3: Запускаємо компіляцію всіх Eclipse RCP модулів та пакування дистрибутивів
+      - name: Build Archi with Maven
+        run: mvn clean package -B -e
+
+      # Крок 4: Зберігаємо готові інсталятори для Windows, Linux та macOS
+      - name: Upload Archi Binaries
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: Archi-Binaries
+          # Tycho генерує фінальні продукти у підпапках target/products/
+          path: |
+            **/target/products/*.zip
+            **/target/products/*.tar.gz
+            **/target/products/*.dmg
