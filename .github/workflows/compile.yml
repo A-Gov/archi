@@ -1,22 +1,22 @@
-# Назва конфігурації автоматичної збірки ядра Archi
-name: Build Archi Core (Product Profile)
+# Назва конфігурації автоматичної збірки ядра Archi з вбудованим JRE
+name: Build Archi
 
-# Тригери запуску конфігурації
+# Тригери автоматичного та ручного запуску
 on:
   push:
-    branches: [ "master", "main" ] # Автозапуск при коміті у головну гілку
-  workflow_dispatch: # Дозвіл ручного запуску через інтерфейс GitHub
+    branches: [ "master", "main" ]
+  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-latest # Використовуємо Linux-середовище
+    runs-on: ubuntu-latest # Використовуємо Linux-середовище для максимальної швидкодії збірки
 
     steps:
       # Крок 1: Клонуємо форк головного репозиторію Archi
       - name: Checkout Repository
         uses: actions/checkout@v5
 
-      # Крок 2: Встановлюємо Java 21 (жорстка вимога свіжого Eclipse Tycho)
+      # Крок 2: Встановлюємо Java 21 на збиральну машину для роботи компилятора
       - name: Set up JDK 21
         uses: actions/setup-java@v5
         with:
@@ -24,17 +24,88 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      # Крок 3: Компіляція та пакування з пропуском тестів
-      # ДОДАНО ФІКС: Активація профілю "-P product", який дає команду Tycho
-      # зібрати фінальні виконувані файли (.exe, .app) у цільову папку
+      # Крок 3: Компіляція всіх Eclipse RCP модулів додатка (Тести відключено через headless-режим)
+      # Прапорець -P product активує створення релізних папок застосунку
       - name: Build Archi with Maven
         run: mvn clean package -P product -B -e -DskipTests=true
 
-      # Крок 4: Завантажуємо готові бінарники (Windows, Linux, macOS)
-      # Завдяки профілю 'product' файли гарантовано будуть у цій папці
-      - name: Upload Archi Binaries
+      # Крок 4: Завантаження, розпакування JRE 21 та роздільне пакування додатків під кожну ОС
+      - name: Embed JRE and Split Archives
+        run: |
+          echo "=== Створення директорії дистриб'юції ==="
+          mkdir -p dist
+          PRODUCTS_DIR="com.archimatetool.editor.product/target/products"
+          
+          echo "=== Завантаження офіційних релізів JRE 21 від Adoptium ==="
+          curl -L -o jre-win.zip "https://api.adoptium.net/v3/binary/latest/21/ga/windows/x64/jre/hotspot/normal/eclipse?project=jdk"
+          curl -L -o jre-linux.tar.gz "https://api.adoptium.net/v3/binary/latest/21/ga/linux/x64/jre/hotspot/normal/eclipse?project=jdk"
+          curl -L -o jre-mac.tar.gz "https://api.adoptium.net/v3/binary/latest/21/ga/mac/x64/jre/hotspot/normal/eclipse?project=jdk"
+          
+          echo "=== Розпакування JRE у тимчасові папки ==="
+          mkdir -p jre_temp/win jre_temp/linux jre_temp/mac
+          unzip -q jre-win.zip -d jre_temp/win
+          tar -xzf jre-linux.tar.gz -C jre_temp/linux
+          tar -xzf jre-mac.tar.gz -C jre_temp/mac
+          
+          # Нормалізуємо структуру папок JRE (Adoptium пакує вміст у вкладену папку типу jdk-21.x-jre)
+          mv jre_temp/win/jdk* jre_temp/win/jre
+          mv jre_temp/linux/jdk* jre_temp/linux/jre
+          mv jre_temp/mac/jdk* jre_temp/mac/jre
+          
+          echo "=== Інтеграція JRE та пакування для Windows ==="
+          WIN_DIR=\$(find \$PRODUCTS_DIR -type d -path "*/windows/*" -name "Archi" | head -n 1)
+          if [ ! -z "\$WIN_DIR" ]; then
+            cp -r jre_temp/win/jre "\$WIN_DIR/jre"
+            cd "\$WIN_DIR/.."
+            zip -r "\$GITHUB_WORKSPACE/dist/Archi-Windows-x64.zip" Archi
+            cd "\$GITHUB_WORKSPACE"
+          fi
+          
+          echo "=== Інтеграція JRE та пакування для Linux (Unix) ==="
+          LINUX_DIR=\$(find \$PRODUCTS_DIR -type d -path "*/linux/*" -name "Archi" | head -n 1)
+          if [ ! -z "\$LINUX_DIR" ]; then
+            cp -r jre_temp/linux/jre "\$LINUX_DIR/jre"
+            cd "\$LINUX_DIR/.."
+            tar -czf "\$GITHUB_WORKSPACE/dist/Archi-Linux-x64.tar.gz" Archi
+            cd "\$GITHUB_WORKSPACE"
+          fi
+          
+          echo "=== Інтеграція JRE та пакування для macOS ==="
+          MAC_APP_DIR=\$(find \$PRODUCTS_DIR -type d -path "*/macosx/*" -name "Archi.app" | head -n 1)
+          if [ ! -z "\$MAC_APP_DIR" ]; then
+            # Для Mac Eclipse RCP вбудована папка jre має лежати всередині Contents/Eclipse/
+            mkdir -p "\$MAC_APP_DIR/Contents/Eclipse"
+            cp -r jre_temp/mac/jre "\$MAC_APP_DIR/Contents/Eclipse/jre"
+            
+            PARENT_DIR=\$(dirname "\$MAC_APP_DIR")
+            PARENT_NAME=\$(basename "\$PARENT_DIR")
+            if [ "\$PARENT_NAME" = "Archi" ]; then
+              cd "\$PARENT_DIR/.."
+              zip -r "\$GITHUB_WORKSPACE/dist/Archi-Mac-x64.zip" Archi
+            else
+              cd "\$PARENT_DIR"
+              zip -r "\$GITHUB_WORKSPACE/dist/Archi-Mac-x64.zip" Archi.app
+            fi
+            cd "\$GITHUB_WORKSPACE"
+          fi
+
+      # Крок 5: Завантаження ізольованого архіву для Windows
+      - name: Upload Windows Bundle
         uses: actions/upload-artifact@v5
-        if: always()
         with:
-          name: Archi-Binaries
-          path: com.archimatetool.editor.product/target/products/
+          name: Archi-Windows-x64
+          path: dist/Archi-Windows-x64.zip
+
+      # Крок 6: Завантаження ізольованого архіву для Linux
+      - name: Upload Linux Bundle
+        uses: actions/upload-artifact@v5
+        with:
+          name: Archi-Linux-x64
+          path: dist/Archi-Linux-x64.tar.gz
+
+      # Крок 7: Завантаження ізольованого архіву для macOS
+      - name: Upload macOS Bundle
+        uses: actions/upload-artifact@v5
+        with:
+          name: Archi-Mac-x64
+          path: dist/Archi-Mac-x64.zip
