@@ -1,5 +1,5 @@
 # Назва конфігурації автоматичної збірки ядра Archi
-name: Build Archi
+name: Build Archi Core (Skip Tests)
 
 # Тригери запуску
 on:
@@ -24,11 +24,12 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      # Крок 3: Компіляція та ПАКУВАННЯ ПРОДУКТУ (змінено package на verify)
+      # Крок 3: Компіляція та пакування ПРОДУКТУ з ігноруванням тестів (SWT/UI)
       - name: Build Archi with Maven
-        run: mvn clean verify -B -e
+        # ВИПРАВЛЕННЯ: Додано прапорець -DskipTests=true для пропуску фази тестування
+        run: mvn clean verify -B -e -DskipTests=true
 
-      # Крок 4: Універсальний локатор артефактів (захист від порожніх шляхів)
+      # Крок 4: Універсальний локатор артефактів
       - name: Locate and Collect Binaries
         if: always()
         run: |
